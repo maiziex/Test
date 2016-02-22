@@ -261,6 +261,7 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn)
     float knnSI;
     float* knnbucket = calloc(K_number+1,sizeof(float));
     double dist;
+    int tmp1,tmp2;
    
     printf("%i\n",indel_knn->candidate_num);
     for(i = 0; i < indel_knn->candidate_num; i++)
@@ -280,6 +281,11 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn)
                     intersection_counter=0;
                     for(k=0; k< pars->sample_num;k++)
                     {
+                        tmp1=(block->GT[i][k]+1)>>1;
+                        tmp2=(block->GT[j][k]+1)>>1;
+                        union_counter+=(tmp1|tmp2);
+                        intersection_counter+=(tmp1&tmp2);
+                        /*
                         if ((indel_knn->GT[i][k]==1 || indel_knn->GT[i][k]==2) ||  (block->GT[j][k]==1 || block->GT[j][k]==2))
                         {
                             union_counter ++;
@@ -289,6 +295,7 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn)
                         {
                             intersection_counter ++;
                         }
+                         */
                     }
                     if(intersection_counter==0)
                     {
