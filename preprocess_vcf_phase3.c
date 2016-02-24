@@ -599,8 +599,10 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
     char* ref = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
     char* alt = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
     c = (char) getc(input);
-    
-    while(c != EOF)
+
+  //  locus=0;
+   // while(locus!=366009)
+     while(c != EOF)  
     {
         memset(chr, 0, MAX_CHROMOSOME_LENGTH * sizeof(char));
         field_length = 0;
@@ -618,10 +620,12 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
         }
         
         printf("%s:%i\n", chr, locus);
-        /*if(locus==260315)
+     /*   if(locus==88186)
          {
          printf("hereerror\n");
-         }*/
+         }
+
+*/
         while((c = (char) getc(input)) != '\t');
         
         memset(ref, 0, MAX_CHROMOSOME_LENGTH * sizeof(char));
@@ -638,8 +642,19 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
         field_length = 0;
         while((c = (char) getc(input)) != '\t')
         {
-            alt[field_length] = c;
-            field_length++;
+            if(c!=',')
+            {
+                 alt[field_length] = c;
+                 field_length++;
+            }
+            else
+            {
+                  while((c = (char) getc(input)) != '\t');
+                  if(c=='\t')
+                  {
+                      break;
+                  }
+            }
         }
         alt_length = field_length;
         
@@ -671,7 +686,7 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
         freeze=0;
         num_of_semicolon_before_AF=0;
         c = (char) getc(input);
-        char* fbuffer = calloc(10,sizeof(char));
+        char* fbuffer = calloc(100,sizeof(char));
         while(c != '\t')
         {
             c_prev = c;
@@ -734,7 +749,8 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
                 block->GT[block->candidate_num][i] = (c_prev-'0')+(c_next-'0');
                 c = (char) getc(input);
             }
-            while((c = (char) getc(input)) != '\t')
+            while(c!= '\t' &&  c!='\n')
+            //while((c = (char) getc(input)) != '\t')
             {
                 if (c == EOF)
                 {

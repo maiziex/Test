@@ -1,10 +1,11 @@
 C=		gcc
 CXX=		g++
-CFLAGS=		-g -Wall -std=c99 -fopenmp # --stack-check # -fstack-protector-all
+#CFLAGS=		-g -Wall -std=c99 -fopenmp # --stack-check # -fstack-protector-all
+CFLAGS=		-O3 -Wall -std=c99 -fopenmp # --stack-check # -fstack-protector-all
 CXXFLAGS=	$(CFLAGS)
 DFLAGS=		-DHAVE_PTHREAD
 DBGFLAGS= 	#-DDEBUG_ENABLED
-OBJS=		common.o preprocess_vcf.o #svm/svm.o refine_svm.o subtree.o
+OBJS=		common.o preprocess_vcf_phase3.o #svm/svm.o refine_svm.o subtree.o
 PROG=		read_vcf
 INCLUDES=	
 LIBS=		-lm -lpthread #-lz
