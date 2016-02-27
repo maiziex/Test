@@ -343,7 +343,7 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn, const int K
    // printf("%i\n",block->candidate_num);
     for(i = 0; i < block->candidate_num; i++)
     {
-     //   printf("%i\n",i);
+        printf("%i\n",i);
         if(block->flag[i])
         {
             m = 0;
@@ -401,11 +401,11 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn, const int K
             
             for(l=0; l< K_number;l++)
             {
-                if (knnbucket[l].index < 0)
+              /*  if (knnbucket[l].index < 0)
                 {
                     fprintf(stderr,"Error: index did not get assigned\n ");
                     exit(1);
-                }
+                }*/
                 totSI =  totSI + knnbucket[l].si;
             }
             
@@ -600,9 +600,7 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
     char* alt = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
     c = (char) getc(input);
 
-  //  locus=0;
-   // while(locus!=366009)
-     while(c != EOF)  
+    while(c != EOF)  
     {
         memset(chr, 0, MAX_CHROMOSOME_LENGTH * sizeof(char));
         field_length = 0;
@@ -749,7 +747,7 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
                 block->GT[block->candidate_num][i] = (c_prev-'0')+(c_next-'0');
                 c = (char) getc(input);
             }
-            while(c!= '\t' &&  c!='\n')
+            while(c== '\n' &&  (c=(char) getc(input)) == EOF)
             //while((c = (char) getc(input)) != '\t')
             {
                 if (c == EOF)

@@ -2,7 +2,39 @@
 #include <stdlib.h>
 #include "common.h"
 
+int chr_equal(char* chr, char* chr_prev)
+{
+        int i;
+        for(i = 0; i < MAX_CHROMOSOME_LENGTH; i++)
+        {
+                if(chr[i] != chr_prev[i]) return 1;
+        }
+        return 0;
+}
 
+void chr_copy(char* chr, char* chr_prev)
+{
+        int i;
+        for(i = 0; i < MAX_CHROMOSOME_LENGTH; i++)
+        {
+                chr_prev[i] = chr[i];
+        }
+}
+
+int getMaxInt(int a, int b)
+{
+	if(a > b) return a; else return b;
+}
+
+int getMinInt(int a, int b)
+{
+	if(a < b) return a; else return b;
+}
+
+int64_t getMinInt64(int64_t a, int64_t b)
+{
+        if(a < b) return a; else return b;
+}
 
 FILE* fileOpenR(char* filename)
 {

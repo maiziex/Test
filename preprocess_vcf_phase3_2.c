@@ -5,7 +5,7 @@
 #include "common.h"
 #include "time.h"
 
-#define ZERO 5e-5
+#define ZERO 1e-6
 typedef struct
 {
     int64_t candidate_num;
@@ -22,7 +22,10 @@ typedef struct
 {
     int64_t sample_num;
     int sample_name_max_length;
+    int reference_chr_max_length;
+    int block_num;
 } pars_t;
+
 
 typedef struct
 {
@@ -43,6 +46,224 @@ typedef struct
 } indel_knn_t;
 
 
+typedef struct
+{
+    int64_t block_size;
+} index_pars_t;
+
+
+typedef struct
+{
+    char* chr;
+    int64_t lb;
+    int64_t rb;
+    int block_num;
+} block_boundary_t;
+
+
+void set_default_index_pars(index_pars_t* index_pars)
+{
+    index_pars->block_size=10000;
+}
+
+
+
+void cut_blocks(char* input_filename, char* output_filename, index_pars_t* pars)
+{
+	printf("load %s\n", input_filename);
+
+	FILE* input = fileOpenR(input_filename);
+	FILE* output = fileOpenW(output_filename);
+
+	char c; //, c_prev;
+
+	int i;
+	char* chr = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
+	char* chr_prev = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
+	int64_t pos, start_pos = -1, end_pos;
+	int g;
+
+	while((c = (char) getc(input)) != EOF)
+	{
+		if(c == '#')
+		{
+			c = (char) getc(input);
+			while(c != '\n') c = (char) getc(input);
+		}
+		else
+		{
+			i = 0;
+			memset(chr, 0, MAX_CHROMOSOME_LENGTH * sizeof(char));
+			while(c != ' ' && c != '\t')
+			{
+				chr[i] = c;
+				i++;
+				c = (char) getc(input);
+			}
+			if(chr_equal(chr, chr_prev)) g = 1; else g = 0;
+		
+			if(g)
+			{
+				if(start_pos >= 0)
+				{
+					fprintf(output, "%d\n", (int) (ceil((double) (end_pos + 1 - start_pos) / (double) pars->block_size) + ZERO));
+					for(i = 0; i < (int) (ceil((double) (end_pos + 1 - start_pos) / (double) pars->block_size) + ZERO); i++)
+					{
+						fprintf(output, "%" PRIu64 "\t%" PRIu64 "\n", start_pos + pars->block_size * i, getMinInt64(start_pos + pars->block_size * (i + 1) - 1, end_pos));
+					}
+				}
+				fprintf(output, "%s\n", chr);
+				chr_copy(chr, chr_prev);
+			}
+
+			c = (char) getc(input);
+			pos = 0;
+			while(c != ' ' && c != '\t')
+			{
+				pos = pos * 10 + c - '0';
+				c = (char) getc(input);
+			}
+			if(g) start_pos = pos;
+			end_pos = pos;
+
+			while(c != '\n') c = (char) getc(input);
+		}
+	}
+	if(start_pos >= 0)
+	{
+		fprintf(output, "%d\n", (int) (ceil((double) (end_pos + 1 - start_pos) / (double) pars->block_size) + ZERO));
+		for(i = 0; i < (int) (ceil((double) (end_pos + 1 - start_pos) / (double) pars->block_size) + ZERO); i++)
+		{
+			fprintf(output, "%" PRIu64 "\t%" PRIu64 "\n", start_pos + pars->block_size * i, getMinInt64(start_pos + pars->block_size * (i + 1) - 1, end_pos));
+		}
+	}
+
+	free(chr);	// TODO
+	free(chr_prev);	// TODO
+
+	fileClose(input);
+	fileClose(output);
+}
+
+int index_pl(char* input_filename,index_pars_t* pars)
+{
+    char* output_filename = (char*) calloc(strlen(input_filename)+20,sizeof(char));
+    sprintf(output_filename,"%s.blk", input_filename);
+    cut_blocks(input_filename,output_filename,pars);
+    free(output_filename);
+    return 0;
+}
+
+block_boundary_t* read_block_boundaries(char* reference_panel_filename, pars_t* pars)
+{
+	char* input_filename = (char*) calloc(strlen(reference_panel_filename) + 20, sizeof(char));
+	sprintf(input_filename, "%s.blk", reference_panel_filename);
+
+	int i, j;
+	FILE* input = fileOpenR(input_filename);
+	int chr_max_length = 0, chr_length;
+	int block_num, total_block_num = 0;
+	char c;
+	while((c = (char) getc(input)) != EOF)
+	{
+		chr_length = 0;
+		while(c != '\n') 
+		{
+			c = (char) getc(input);
+			chr_length++;
+		}
+		if(!chr_length) break;
+		if(chr_length > chr_max_length) chr_max_length = chr_length;
+
+		block_num = 0;
+		while((c = (char) getc(input)) != '\n') block_num = block_num * 10 + c - '0';
+		total_block_num += block_num;
+
+		for(i = 0; i < block_num; i++)
+		{
+			while((c = (char) getc(input)) != '\n');
+		}
+	}
+	fileClose(input);
+	pars->block_num = total_block_num;
+	pars->reference_chr_max_length = chr_max_length;
+
+	/////////////////////////////////////////////////////////
+
+	block_boundary_t* block_boundaries = (block_boundary_t*) malloc(total_block_num * sizeof(block_boundary_t));
+	for(i = 0; i < total_block_num; i++)
+	{
+		block_boundaries[i].chr = (char*) calloc(chr_max_length + 1, sizeof(char));
+	}
+
+	/////////////////////////////////////////////////////////
+
+	int p = 0;
+	input = fileOpenR(input_filename);
+	while((c = (char) getc(input)) != EOF)
+        {
+                chr_length = 0;
+                while(c != '\n')
+                {
+			block_boundaries[p].chr[chr_length] = c;
+                        c = (char) getc(input);
+                        chr_length++;
+                }
+		if(!chr_length) break;
+                
+		block_num = 0;
+                while((c = (char) getc(input)) != '\n') block_num = block_num * 10 + c - '0';
+		for(i = p + 1; i < p + block_num; i++)
+		{
+			for(j = 0; j < chr_length; j++)
+			{
+				block_boundaries[i].chr[j] = block_boundaries[p].chr[j];
+			}
+		}
+
+                for(i = 0; i < block_num; i++)
+                {
+			block_boundaries[p + i].lb = 0;
+                        while((c = (char) getc(input)) != '\t')
+			{
+				block_boundaries[p + i].lb = block_boundaries[p + i].lb * 10 + c - '0';
+			}
+			block_boundaries[p + i].rb = 0;
+			while((c = (char) getc(input)) != '\n')
+                        {
+                                block_boundaries[p + i].rb = block_boundaries[p + i].rb * 10 + c - '0';
+                        }
+	
+		//	if(!i) block_boundaries[p + i].lb = -1;
+		//	if(i == block_num - 1) block_boundaries[p + i].rb = -1;
+                }
+		p += block_num;
+        }
+	fileClose(input);	
+
+	/*for(i = 0; i < total_block_num; i++)
+	{
+		printf("chr: %s, %d - %d\n", block_boundaries[i].chr, block_boundaries[i].lb, block_boundaries[i].rb);
+	}*/
+
+	free(input_filename);
+    block_boundaries->block_num = block_num;
+
+	return block_boundaries;
+}
+
+void free_block_boundaries(block_boundary_t* block_boundaries)
+{
+    int i;
+    for(i=0;i<block_boundaries->block_num;i++)
+    {
+        free(block_boundaries[i].chr);
+    }
+    free(block_boundaries);
+}
+
+
+
 int cmpfuncSI(const void* a, const void*b)
 {
     SI_t fa=*(const SI_t*)a;
@@ -56,6 +277,8 @@ int cmpfunc(const void* a, const void*b)
     float fb=*(const float*)b;
     return ((fa<fb) - (fa>fb));
 }
+
+
 
 block_t* init_block(int64_t max_candidate_num, block_t* block, pars_t* pars)
 {
@@ -261,76 +484,11 @@ float* descend_sort(float* saved_buffer,int64_t candidate_num)
 
 
 
-/*
-void find_KNN(block_t* block, pars_t* pars, indel_knn_t* indel_knn)
-{
-    int i,j,k,m,l;
-    int union_counter;
-    int intersection_counter;
-    float SI;
-    float knnSI;
-    float* saved_SI = calloc(block->candidate_num,sizeof(float));
-    printf("%i\n",block->candidate_num);
-    for(i = 0; i < block->candidate_num; i++)
-    {
-        printf("%i\n",i);
-        if(block->flag[i]==1)  //indel locus
-        {
-            m = 0;
-            knnSI = 0.0;
-            for(j=0; j< block->candidate_num;j++)
-            {
-                if(block->flag[j]==0)  // snp locus
-                {
-                    saved_SI[m] = 0;
-                    union_counter=0;
-                    intersection_counter=0;
-                    for(k=0; k< pars->sample_num;k++)
-                    {
-                        if ((block->GT[i][k]==1 || block->GT[i][k]==2) ||  (block->GT[j][k]==1 || block->GT[j][k]==2))
-                        {
-                            union_counter ++;
-                        }
-                        
-                        if ((block->GT[i][k]==1 || block->GT[i][k]==2) &&  (block->GT[j][k]==1 || block->GT[j][k]==2))
-                        {
-                            intersection_counter ++;
-                        }
-                    }
-                    SI =(float) intersection_counter*(1.0)/union_counter;
-                    //printf("%f",SI);
-                    saved_SI[m++]=SI;
-                }
-                
-            }
-            
-            descend_sort(saved_SI,block->candidate_num);
-            for(l=0; l< 4;l++)
-            {
-                knnSI =  knnSI + saved_SI[l];
-            }
-            
-            indel_knn->candidate_loci[indel_knn->candidate_num] = block->candidate_loci[i]; 
-            indel_knn->flag[indel_knn->candidate_num]=block->flag[i];
-            indel_knn->AF[indel_knn->candidate_num] = block->AF[i];
-            indel_knn->flag[indel_knn->candidate_num]=block->flag[i];
-            indel_knn->knn[indel_knn->candidate_num] = knnSI/4.0;
-            indel_knn->candidate_num++;
-            check_recalloc_indel_knn(indel_knn);
-        }
-        
-    }
-   free(saved_SI); 
-    
-}
-*/
-
 
 
 void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn, const int K_number)
 {
     int i,j,k,m,l;
-    // K_number=4;
     int union_counter;
     int intersection_counter;
     SI_t SI;
@@ -343,7 +501,7 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn, const int K
    // printf("%i\n",block->candidate_num);
     for(i = 0; i < block->candidate_num; i++)
     {
-        printf("%i\n",i);
+     //   printf("KNN %i\n",i);
         if(block->flag[i])
         {
             m = 0;
@@ -401,13 +559,14 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn, const int K
             
             for(l=0; l< K_number;l++)
             {
-             /*   if (knnbucket[l].index < 0)
+              /*  if (knnbucket[l].index < 0)
                 {
                     fprintf(stderr,"Error: index did not get assigned\n ");
-                    exit(1);
-                } */
+                    break;
+                }*/
                 totSI =  totSI + knnbucket[l].si;
-            } 
+            }
+            
             indel_knn->candidate_loci[indel_knn->candidate_num] = block->candidate_loci[i];
             indel_knn->AF[indel_knn->candidate_num] = block->AF[i];
             indel_knn->flag[indel_knn->candidate_num]=block->flag[i];
@@ -426,122 +585,9 @@ void find_KNN2(block_t* block, pars_t* pars, indel_knn_t* indel_knn, const int K
     free(knnbucket);
 }
 
-/*
-void find_KNN3(block_t* block, pars_t* pars, indel_knn_t* indel_knn)
+
+void print_indel_info(FILE* output, indel_knn_t* indel_knn, const int K_number,block_t* block)
 {
-    int i,j,k,m,l,K_number;
-    K_number=4;
-    int union_counter;
-    int intersection_counter;
-    float SI;
-    float knnSI;
-    float* knnbucket = calloc(K_number,sizeof(float));
-   
-    printf("%i\n",block->candidate_num);
-    for(i = 0; i < block->candidate_num; i++)
-    {
-        printf("%i\n",i);
-        if(block->flag[i]==1 || block->flag[i]==2)  //indel locus
-        {
-            m = 0;
-            // initialize knnbucket to zero
-            knnbucket[0]=0.0;
-            knnbucket[1]=0.0;
-            knnbucket[2]=0.0;
-            knnbucket[3]=0.0;
-
-            knnSI = 0.0;
-            for(j=0; j< block->candidate_num;j++)
-            {
-                if(block->flag[j]==0)  // snp locus
-                {
-                    union_counter=0;
-                    intersection_counter=0;
-                    for(k=0; k< pars->sample_num;k++)
-                    {
-                        if ((block->GT[i][k]==1 || block->GT[i][k]==2) ||  (block->GT[j][k]==1 || block->GT[j][k]==2))
-                        {
-                            union_counter ++;
-                        }
-                        
-                        if ((block->GT[i][k]==1 || block->GT[i][k]==2) &&  (block->GT[j][k]==1 || block->GT[j][k]==2))
-                        {
-                            intersection_counter ++;
-                        }
-                    }
-                    if(intersection_counter==0)
-                    {
-                        continue;
-                    }
-              
-                    SI =(float) intersection_counter*(1.0)/union_counter;
-                    knnbucket[4] = SI;
-                   // qsort(knnbucket,5,sizeof(float),cmpfunc);
-                    descend_sort(knnbucket,K_number+1);
-                    if(SI> knnbucket[0])
-                    {
-                        knnbucket[3]=knnbucket[2];
-                        knnbucket[2]=knnbucket[1];   
-                        knnbucket[1]=knnbucket[0]; 
-                        knnbucket[0]=SI;
-                    }
-                    else
-                    {
-                        if(SI> knnbucket[1])
-                        {
-                            knnbucket[3]=knnbucket[2];   
-                            knnbucket[2]=knnbucket[1]; 
-                            knnbucket[1]=SI;
-                        }
-                        else
-                        {
-                            if(SI>knnbucket[2])
-                            {
-                                knnbucket[3]=knnbucket[2];
-                                knnbucket[2]=SI;
-                            }
-                            else
-                            {
-                                if(SI>knnbucket[3])
-                                {
-                                    knnbucket[3]=SI;
-                                }
-                            }
-                        }
-                    }
-
-
-
-                }
-                
-            }
-            
-            for(l=0; l< K_number;l++)
-            {
-                knnSI =  knnSI + knnbucket[l];
-            }
-            
-            indel_knn->candidate_loci[indel_knn->candidate_num] = block->candidate_loci[i];
-            indel_knn->AF[indel_knn->candidate_num] = block->AF[i];
-            indel_knn->flag[indel_knn->candidate_num]=block->flag[i];
-            indel_knn->snporindel_len[indel_knn->candidate_num]=block->snporindel_len[i];
-            indel_knn->knn[indel_knn->candidate_num] = knnSI/K_number;
-            indel_knn->candidate_num++;
-            check_recalloc_indel_knn(indel_knn);
-        }
-        
-    }
-    free(knnbucket);
-    
-}
-*/
-
-void print_indel_info(char* output_prefix, indel_knn_t* indel_knn, const int K_number,block_t* block)
-{
-    char* output_filename = (char*) malloc(strlen(output_prefix)+20);
-    sprintf(output_filename,"%s.final",output_prefix);
-    FILE* output;
-    output = fileOpenW(output_filename);
     int i,l;
     for(i=0;i<indel_knn->candidate_num;i++)
     {
@@ -553,25 +599,23 @@ void print_indel_info(char* output_prefix, indel_knn_t* indel_knn, const int K_n
        }
        fprintf(output,"\n");
     }
-    
-    free(output_filename);
-    fileClose(output);
 }
 
 
 
 
-void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
+
+void read_vcf_data(char* input_filename, pars_t* pars,block_boundary_t* block_boundaries,int block_index,FILE* output)
 {
     const int K_number = 4;
     init_query_samples(input_filename,pars);
     char c,c_prev,c_next;
+
     block_t* block =  (block_t*) calloc(1,sizeof(block_t));
     indel_knn_t* indel_knn =  (indel_knn_t*) calloc(1,sizeof(indel_knn_t));
     init_block(10000,block,pars);
     init_indel_knn(10000,indel_knn, K_number);
-    
-    
+      
     FILE* input = fileOpenR(input_filename);
     while( (c= (char) getc(input)) != EOF)
     {    if(c == '#')
@@ -599,7 +643,7 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
     char* alt = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
     c = (char) getc(input);
 
-    while(c != EOF)  
+     while(c != EOF)  
     {
         memset(chr, 0, MAX_CHROMOSOME_LENGTH * sizeof(char));
         field_length = 0;
@@ -616,13 +660,13 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
             locus = locus * 10 + c - '0';
         }
         
-        printf("%s:%i\n", chr, locus);
-     /*   if(locus==88186)
-         {
-         printf("hereerror\n");
-         }
+    //    printf("%s:%i\n", chr, locus);
+   /*   if(locus==366009)
+        {
+            printf("hereerror\n");
+        }
+     */
 
-*/
         while((c = (char) getc(input)) != '\t');
         
         memset(ref, 0, MAX_CHROMOSOME_LENGTH * sizeof(char));
@@ -747,7 +791,8 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
                 c = (char) getc(input);
             }
            // while(c!= '\t' &&  c!='\n')
-            while((c = (char) getc(input)) != '\t')
+            while( c=='\n' && (c=(char) getc(input))== EOF)
+            //while((c = (char) getc(input)) != '\t')
             {
                 if (c == EOF)
                 {
@@ -760,43 +805,75 @@ void read_vcf_data(char* input_filename,char* output_prefix, pars_t* pars)
             
         }
         
+         
         add_candidate_into_gl_block(block,pars,locus);
-        
-    }
-    
-    clock_t start,end;
-    double cpu_time_used;
-    start=clock();
-    find_KNN2(block,pars,indel_knn, K_number);
-    end=clock();
-    cpu_time_used=((double) (end-start))/CLOCKS_PER_SEC;
-   //  find_KNN(block,pars,indel_knn);
-   
- 
+        if(locus>=block_boundaries[block_index].rb)
+        {
+           find_KNN2(block,pars,indel_knn, K_number);
+           block_index++;          
+           print_indel_info(output, indel_knn, K_number,block); 
+           free_block(block);
+           free_indel_knn(indel_knn);
+           free(chr);
+           free(ref);
+           free(alt);
+           chr = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
+           ref = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
+           alt = calloc(MAX_CHROMOSOME_LENGTH, sizeof(char));
 
-     //   printf("%i",indel_knn->candidate_num);
-      //  printf("\n");
-    print_indel_info(output_prefix, indel_knn, K_number,block); 
-    
+           block =  (block_t*) calloc(1,sizeof(block_t));
+           indel_knn =  (indel_knn_t*) calloc(1,sizeof(indel_knn_t));
+           init_block(10000,block,pars);
+           init_indel_knn(10000,indel_knn, K_number);
+        }
+    }
     free_block(block);
     free_indel_knn(indel_knn);
     free(chr);
     free(ref);
     free(alt);
-    printf("%f knn2 time\n",cpu_time_used);
+	fileClose(input);
 }
 
 
 int main(int argc, char* argv[])
 {
+    clock_t start,end;
+    double cpu_time_used;
+    start=clock();
+
+
+    index_pars_t* index_pars=(index_pars_t*) calloc(1,sizeof(index_pars_t));
+    set_default_index_pars(index_pars);
+    index_pl(argv[1],index_pars);
+
+
     pars_t* pars =  (pars_t*) calloc(1,sizeof(pars_t));
     // set_default_pars(pars);
-    read_vcf_data(argv[1], argv[2],pars);
+    block_boundary_t* block_boundaries =  read_block_boundaries(argv[1],pars);
+    char* output_prefix;
+    output_prefix = argv[2];
+    char* output_filename = (char*) malloc(strlen(output_prefix)+20);
+    sprintf(output_filename,"%s.final",output_prefix);
+    FILE* output;
+    output = fileOpenW(output_filename);
+
+    int block_index = 0;
+
+    read_vcf_data(argv[1],pars,block_boundaries,block_index,output);
+
     printf("DONE!!!\n");
     
+    free(block_boundaries);
+    free(index_pars);
     free(pars); 
+    free(output_filename);
+    fileClose(output);
 
-    
+    end=clock();
+    cpu_time_used=((double) (end-start))/CLOCKS_PER_SEC;
+
+    printf("%f knn2 time\n",cpu_time_used);
     
     
 }

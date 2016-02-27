@@ -17,4 +17,9 @@ FILE* fileOpenWB(char* filename);
 FILE* fileOpenA(char* filename);
 void fileClose(FILE* file);
 int fileExists(const char *filename);
+int chr_equal(char* chr, char* chr_prev);
+void chr_copy(char* chr, char* chr_prev);
+int getMaxInt(int a, int b);
+int getMinInt(int a, int b);
+int64_t getMinInt64(int64_t a, int64_t b);
 #endif
